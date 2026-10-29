@@ -52,7 +52,7 @@ test('Basic dropdown interaction', async ({ mount }) => {
 	// Clicking the toggle should not open the menu (controlled component) but should call onToggle
 	await toggle.click();
 	await expect(menu).toBeHidden();
-	expect(toggleCount).toBe(1);
+	await expect.poll(() => toggleCount).toBe(1);
 
 	// Open the dropdown via props update
 	await component.update(
@@ -73,10 +73,10 @@ test('Basic dropdown interaction', async ({ mount }) => {
 	await expect(component.getByText('Item 2')).toBeVisible();
 
 	// Clicking a DropdownItem should call onClick and onToggle, but a menu stays open (controlled)
-	// Note: DropdownItem dispatches onToggle via setTimeout, so we poll for the async callback
+	// Note: callbacks reach the test asynchronously (and DropdownItem dispatches onToggle via setTimeout), so we poll
 	await component.getByText('Item 1').click();
 	await expect(menu).toBeVisible();
-	expect(itemClickCount).toBe(1);
+	await expect.poll(() => itemClickCount).toBe(1);
 	await expect.poll(() => toggleCount).toBe(2);
 
 	// Clicking Item 2 (no onClick) should still call onToggle
@@ -153,7 +153,7 @@ test('Keyboard navigation with portal', async ({ mount }) => {
 	const component = await mount(
 		<div className="container">
 			<button>Other Button</button>
-d			<div style={{ overflow: 'hidden', position: 'relative' }}>
+			<div style={{ overflow: 'hidden', position: 'relative' }}>
 				<UncontrolledDropdown portal>
 					<DropdownToggle>Click</DropdownToggle>
 					<DropdownMenu>
@@ -310,3 +310,127 @@ test('Supports strategy prop', async ({ mount }) => {
 	await expect(menu).toHaveCSS('position', 'fixed');
 });
 
+
+test('Highlights an item focused with the keyboard', async ({ mount }) => {
+	const component = await mount(
+		<div className="container">
+			<UncontrolledDropdown>
+				<DropdownToggle>Click</DropdownToggle>
+				<DropdownMenu>
+					<DropdownItem>Item 1</DropdownItem>
+					<DropdownItem>Item 2</DropdownItem>
+				</DropdownMenu>
+			</UncontrolledDropdown>
+		</div>
+	);
+
+	const toggle = component.getByRole('button', { name: 'Click' });
+	const item1 = component.getByRole('menuitem', { name: 'Item 1' });
+	const item2 = component.getByRole('menuitem', { name: 'Item 2' });
+	const page = component.page();
+
+	await toggle.focus();
+	await page.keyboard.press('Enter');
+	await expect(item1).toBeFocused();
+	await expect(item1).toHaveCSS('background-color', 'rgb(230, 230, 230)');
+
+	await page.keyboard.press('ArrowDown');
+	await expect(item2).toBeFocused();
+	await expect(item2).toHaveCSS('background-color', 'rgb(230, 230, 230)');
+	await expect(item1).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+});
+
+test('Does not highlight an item focused after opening with the mouse', async ({ mount }) => {
+	const component = await mount(
+		<div className="container">
+			<UncontrolledDropdown>
+				<DropdownToggle>Click</DropdownToggle>
+				<DropdownMenu>
+					<DropdownItem>Item 1</DropdownItem>
+					<DropdownItem>Item 2</DropdownItem>
+				</DropdownMenu>
+			</UncontrolledDropdown>
+		</div>
+	);
+
+	const toggle = component.getByRole('button', { name: 'Click' });
+	const item1 = component.getByRole('menuitem', { name: 'Item 1' });
+
+	await toggle.click();
+	await expect(item1).toBeFocused();
+	await expect(item1).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+});
+
+test('Highlights a selected item focused with the keyboard', async ({ mount }) => {
+	const component = await mount(
+		<div className="container">
+			<UncontrolledDropdown>
+				<DropdownToggle>Click</DropdownToggle>
+				<DropdownMenu>
+					<DropdownItem className="selected">Item 1</DropdownItem>
+					<DropdownItem>Item 2</DropdownItem>
+				</DropdownMenu>
+			</UncontrolledDropdown>
+		</div>
+	);
+
+	const toggle = component.getByRole('button', { name: 'Click' });
+	const item1 = component.getByRole('menuitem', { name: 'Item 1' });
+
+	await toggle.focus();
+	await component.page().keyboard.press('Enter');
+	await expect(item1).toBeFocused();
+	await expect(item1).toHaveCSS('background-color', 'rgb(221, 221, 221)');
+});
+
+test('Does not highlight a selected item focused after opening with the mouse', async ({ mount }) => {
+	const component = await mount(
+		<div className="container">
+			<UncontrolledDropdown>
+				<DropdownToggle>Click</DropdownToggle>
+				<DropdownMenu>
+					<DropdownItem className="selected">Item 1</DropdownItem>
+					<DropdownItem>Item 2</DropdownItem>
+				</DropdownMenu>
+			</UncontrolledDropdown>
+		</div>
+	);
+
+	const toggle = component.getByRole('button', { name: 'Click' });
+	const item1 = component.getByRole('menuitem', { name: 'Item 1' });
+
+	await toggle.click();
+	await expect(item1).toBeFocused();
+	await expect(item1).toHaveCSS('background-color', 'rgb(235, 235, 235)');
+});
+
+for (const legacy of [false, true]) {
+	test(`Does not highlight a focused disabled item${legacy ? ' with the legacy keyboard class' : ''}`, async ({ mount }) => {
+		const component = await mount(
+			<div className="container">
+				<UncontrolledDropdown>
+					<DropdownToggle>Click</DropdownToggle>
+					<DropdownMenu>
+						<DropdownItem>Item 1</DropdownItem>
+						<DropdownItem tag="a" disabled>Item 2</DropdownItem>
+					</DropdownMenu>
+				</UncontrolledDropdown>
+			</div>
+		);
+
+		const toggle = component.getByRole('button', { name: 'Click' });
+		const item1 = component.getByRole('menuitem', { name: 'Item 1' });
+		const item2 = component.getByRole('menuitem', { name: 'Item 2' });
+		const page = component.page();
+
+		if (legacy) {
+			await page.evaluate(() => document.documentElement.classList.add('keyboard'));
+		}
+		await toggle.focus();
+		await page.keyboard.press('Enter');
+		await expect(item1).toBeFocused();
+		await page.keyboard.press('ArrowDown');
+		await expect(item2).toBeFocused();
+		await expect(item2).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+	});
+}
